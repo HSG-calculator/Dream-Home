@@ -1,16 +1,6 @@
 # Dream-Home
 
-Home buying
+Group Project submitted by Theresa Maria Seehofer and Julian Albrecht for the "7,789 | 8,789: Skills: Programming with Advanced Computer Languages" course in the fall semester 2020 at the University of St. Gallen.
 
-You always wanted to buy your dream home in King County in the U.S state of Washington?
-But you do not know how expensive it is?
+Please read the Introduction file!
 
-Home selling
-
-You want to sell your home to discover another place?
-But you do not know your home value?
-
-HSG Calculator
-
-Then our real estate calculator helps you as a seller or owner!
-Just enter your dream conditions and our program calculates the price for you!
