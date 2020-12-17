@@ -4,7 +4,7 @@ Group Project submitted by Theresa Maria Seehofer and Julian Albrecht for the "7
 
 Our project is divided into three files.
 
-The PDF file gives an overview about the projects and explains all parts in further detail.
+Please read the introduction (PDF) file. The PDF file gives an overview about the projects and explains all parts in further detail.
 
 Please also download the HTML file which shows the code with the respective output.
 Moreover, it includes comments and interpretations of the code and the output.
