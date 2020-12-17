@@ -1,0 +1,223 @@
+---
+title: 'Dream Home: Your House Price Calculator'
+author: "Julian Albrecht, Theresa Maria Seehofer"
+date: "16 12 2020"
+output:
+  html_document: default
+---
+
+Part 1: Load packages that are required to import, process and visualize the data
+
+Dataset: House Prices from King County, USA
+(Source: https://www.kaggle.com/harlfoxem/housesalesprediction)
+
+Load Packages:
+```{r}
+library(openxlsx)
+library(leaflet)
+library(leaflet.extras)
+```
+
+Import Data:
+```{r}
+kc_data <- read.xlsx("kc_house_data.xlsx")
+```
+
+Adjust the output format:
+```{r}
+options(scipen = 6)
+```
+
+
+Part 2: Explore the dataset and its variables
+
+Explore Data:
+```{r}
+dim(kc_data)
+```
+The dataset includes 21 variables and 21613 observations (properties).
+
+```{r}
+head(kc_data)
+```
+The variables are typical house features like price, number of bedrooms, number of bathrooms, location etc. A detailed description of all variables can be found in the introduction file.
+
+We do not need the House ID and the transaction date so we remove them:
+```{r}
+kc_data <- kc_data[,3:21]
+```
+
+In the next step, we estimate two new variables that are important for the estimation of the property value. We use the existing variable year_built to calculate the age of the property and the variable year_renovated to estimate the number of years since the last renovation.
+
+New variable 1: Age of the property
+```{r}
+max(kc_data$yr_built)
+kc_data$age <- 2015 - kc_data$yr_built
+```
+
+New variable 2: Number of years since last renovation
+```{r}
+for(i in 1:length(kc_data$yr_renovated)) {
+  if(kc_data$yr_renovated[i]==0) {
+  kc_data$age_r[i] <- kc_data$age[i]
+  } else {
+    kc_data$age_r[i] <- 2015 - kc_data$yr_renovated[i]
+    }
+}
+```
+
+Examine the new variable "Age"
+```{r}
+summary(kc_data$age)
+```
+The oldest house in the dataset is 115 years old while the average age of houses in King County is approximately 44 years.
+
+```{r}
+par(mfrow = c(1,2))
+hist(kc_data$age, col="dodgerblue", main="Property Age Distribution", xlab="Property Age")
+plot(price ~ age, data=kc_data, cex=0.5, col="dodgerblue", main="Price-Age Relationship", xlab="Property Age", ylab="Property Price")
+```
+
+We can see that there are more modern than old houses in King County. Additionally, the largest price outliers are either very new or very old properties which indicates a quadratic price-age relationship (more on that later).
+
+
+Furthermore, all variables regarding size of the property are measured in square foot, but we want to measure them in square meters. Therefore, we provide a function that converts square foot to square meter.
+
+New function: Convert sqft to sqm
+```{r}
+sqft_sqm <- function(sqft) {
+  sqm <- round(sqft/10.76391)
+  return(sqm)
+}
+```
+
+Apply the function to all variables that are measured in square foot:
+```{r}
+kc_data$sqm_living <- sqft_sqm(kc_data$sqft_living)
+kc_data$sqm_lot <- sqft_sqm(kc_data$sqft_lot)
+kc_data$sqm_above <- sqft_sqm(kc_data$sqft_above)
+kc_data$sqm_basement <- sqft_sqm(kc_data$sqft_basement)
+kc_data$sqm_living15 <- sqft_sqm(kc_data$sqft_living15)
+kc_data$sqm_lot15 <- sqft_sqm(kc_data$sqft_lot15)
+```
+
+Examine the new variable "Square meters of living space"
+```{r}
+summary(kc_data$sqm_living)
+```
+The dataset includes properties with a living space between 27 and 1258 square meters. The average living space is approximately 193 square meters. 
+
+```{r}
+par(mfrow = c(1,2))
+hist(kc_data$sqm_living, col="red", main="Property Size Distribution", xlab="Square Meters")
+plot(price ~ sqm_living, data=kc_data, cex=0.5, col="red", main="Price-Size Relationship", xlab="Property Size", ylab="Property Price")
+```
+
+As expected there are more small than large properties in King County. The price-size relationship seems to be linear. More space leads on average to a higher house price.
+
+Get an overview of all variables we now have:
+```{r}
+ls(kc_data)
+```
+
+
+Part 3: Visualize the location of the properties and their prices
+
+Create an interactive map that shows the location of all properties:
+```{r}
+m1 <- leaflet()
+m1 <- setView(m1, lng = mean(kc_data$long), lat = mean(kc_data$lat), zoom = 10)
+m1 <- addTiles(m1)
+m1 <- addCircleMarkers(m1, lng = kc_data$long, lat = kc_data$lat,
+                       clusterOptions = markerClusterOptions())
+m1
+```
+This map shows the density of the properties in King County. 
+
+Create an interactive map that shows the house price in every location (purple=expensive, yellow=cheap):
+```{r}
+m2 <- leaflet()
+m2 <- setView(m2, lng = mean(kc_data$long), lat = mean(kc_data$lat), zoom = 10)
+m2 <- addTiles(m2)
+
+pal.quantile <- colorQuantile("viridis", 
+                              domain = kc_data$price, reverse = TRUE, n = 10)
+kc_data$price.colors.quant <- pal.quantile(kc_data$price)
+
+m2 <- addCircleMarkers(m2, lng = kc_data$long,
+                       lat = kc_data$lat, radius = log(kc_data$price/1000),
+                       stroke = FALSE, fillOpacity = 0.1, fill = T, 
+                       fillColor =  kc_data$price.colors.quant) 
+m2 <- addLegend(m2, pal = pal.quantile, values = kc_data$price, opacity = 1, title = "House Prices")
+m2
+```
+Yellow circles show the 10% of the properties with the lowest price, dark purple circles show the 10% of the properties with the highest prices. The map shows that the cheapest houses are located in the south of Seattle while the most expensive houses are located in the north and east of Seattle. Especially the regions Bellevue and Mercer Island show very high house prices. 
+
+
+Part 4: Estimation of various regression models which will be the basis for the house price calculator
+
+Effect of the property age:
+```{r}
+r1 <- lm(price ~ age, data=kc_data)
+summary(r1)
+
+r2 <- lm(price ~ age + I(age^2), data=kc_data)
+summary(r2)
+```
+The regression models for the variables "Age" and "Age^2" show that they have a significant impact (indicated by a very low p-value) on the house prices. This relationship seems to be quadratic because both terms age and age^2 are significant. 
+
+We now include all variables:
+```{r}
+r3 <- lm(price ~ age + I(age^2) + age_r + I(age_r^2) + bedrooms + bathrooms + floors + waterfront + view + condition + grade + sqm_living + sqm_lot + sqm_above + sqm_basement + sqm_living15 + sqm_lot15, data=kc_data)
+summary(r3)
+```
+Some of the variables regarding property size are not significant because there is a high correlation between them. We therefore exclude all of them apart from living space and overall property size. 
+
+```{r}
+r4 <- lm(price ~ age + I(age^2) + age_r + I(age_r^2) + bedrooms + bathrooms + floors + waterfront + view + condition + grade + sqm_living + sqm_lot, data=kc_data)
+summary(r4)
+```
+All of the included variables are now significant (at least at a 5% level). This model will be used as a basis for the house price calculator. 
+
+
+Part 5: House Price Calculator
+
+Ask the user for all the required input parameters:
+```{r}
+user_age <- as.numeric(readline(prompt="Please enter the age of your desired property in years: "))
+user_age_r <- as.numeric(readline(prompt="Please enter the years since the last renovation: "))
+user_bedrooms <- as.numeric(readline(prompt="Please enter the number of bedrooms: "))
+user_bathrooms <- as.numeric(readline(prompt="Please enter the number of bathrooms: "))
+user_floors <- as.numeric(readline(prompt="Please enter the number of floors: "))
+user_waterfront <- as.numeric(readline(prompt="Please indicate if your desired property is located at the waterfront (1 for yes, 0 for no): "))
+user_view <- as.numeric(readline(prompt="Please indicate on a scale from 0 to 4 how good the view from your property is (0 = no view, 4 = perfect view): "))
+user_condition <- as.numeric(readline(prompt="Please indicate the condition of the house on a scale from 1 to 5 (1 = bad, 5 = perfect): "))
+user_grade <- as.numeric(readline(prompt="Please indicate on a scale from 1 to 13 how good the building construction and design are (1 = bad, 7 = average, 13 = perfect): "))
+user_sqm_living <- as.numeric(readline(prompt="Please enter the size of the interior living space in square meters: "))
+user_sqm_lot <- as.numeric(readline(prompt="Please enter the size of the overall land space in square meters: "))
+```
+
+Store user's input in a new data frame:
+```{r}
+userhouse <- data.frame(age=user_age, age_r=user_age_r, bedrooms=user_bedrooms, bathrooms=user_bathrooms, floors=user_floors, waterfront=user_waterfront, view=user_view, condition=user_condition, grade=user_grade, sqm_living=user_sqm_living, sqm_lot=user_sqm_lot)
+```
+
+Predict the house price based on the model:
+```{r}
+predict(r4, newdat = userhouse, interval = "prediction", level = 0.25)
+```
+The output of the calculator contains three numbers. "Fit" is the estimated house price and "Lwr" and "Upr" define an error margin for the output. They provide an interval in which the house price will probably lie. 
+
+
+Now we test our calculator and compute the property value for our sample buyer who would like to estimate the price he has to pay in order to acquire his dream home. The house characteristics are listed below. 
+
+Example property: 50 years old, 10 years since last renovation, 3 bedrooms, 2 bathrooms, 2 floors, no waterfront, average view (2), condition is good (4), construction grade 7, 120 square meters of living space, 300 square meters of land space
+```{r}
+examplehouse <- data.frame(age=50, age_r=10, bedrooms=3, bathrooms=2, floors=2, waterfront=0, view=2, condition=4, grade=7, sqm_living=120, sqm_lot=300)
+predict(r4, newdat = examplehouse, interval = "prediction", level = 0.25)
+```
+
+The dream home of our sample buyer has an estimated house price of approximately 525000 USD. 
+
+The house price calculator can be used for any buyer or seller who wants to estimate the property value of an object he or she wants to buy or sell given certain house features.
+
